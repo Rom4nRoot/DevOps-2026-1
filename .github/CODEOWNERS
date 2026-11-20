@@ -1,0 +1,25 @@
+# Критические файлы приёмки. Изменения в них требуют отзыва владельца (Code Owner).
+# Включите в защите ветки main: «Require review from Code Owners» (scripts/ci_protect_branch.sh).
+# Для командной работы добавьте второго владельца: * @логин-второго-участника
+# Автор PR не может одобрить собственные изменения, поэтому нужен второй аккаунт (участник или преподаватель).
+
+/.github/                       @Rom4nRoot
+/ci/                            @Rom4nRoot
+/Makefile                       @Rom4nRoot
+/quality-baseline.txt           @Rom4nRoot
+/backend/pyproject.toml         @Rom4nRoot
+/backend/tests/                 @Rom4nRoot
+/backend/ale/versions/          @Rom4nRoot
+/backend/requirements*.txt      @Rom4nRoot
+/docs/TRACEABILITY.md           @Rom4nRoot
+/scripts/check_policy.py        @Rom4nRoot
+/scripts/check_container_policy.py @Rom4nRoot
+/scripts/ci_guard.py            @Rom4nRoot
+/scripts/container_check.sh     @Rom4nRoot
+/Dockerfile                     @Rom4nRoot
+/compose.yaml                   @Rom4nRoot
+/docker/                        @Rom4nRoot
+/.dockerignore                  @Rom4nRoot
+/.gitleaks.toml                 @Rom4nRoot
+/.trivyignore                   @Rom4nRoot
+/CONTRIBUTING.md                @Rom4nRoot

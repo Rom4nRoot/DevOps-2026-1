@@ -52,3 +52,10 @@ mutants/
 
 # Лаб. 4: настройки контейнерного окружения (пароли)
 .env.docker
+
+# Лаб. 5: кэши и временные файлы CI
+.ci-cache/
+.trivycache/
+image.tar
+ci-summary.md
+ci-publish-summary.md

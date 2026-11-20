@@ -139,6 +139,44 @@ def check_traceability(baseline: dict[str, int]) -> None:
     print(f"  требований ТЗ: {len(rows)}, покрыто тестами: {covered} ({percent}%)")
 
 
+REQUIRED_JOBS = ["guard", "style", "policy", "test", "migrations", "backup", "security", "container", "build"]
+
+
+def check_ci_pipeline() -> None:
+    workflow = ROOT / ".github" / "workflows" / "ci.yml"
+    if not workflow.exists():
+        fail(".github/workflows/ci.yml отсутствует")
+        return
+    text = workflow.read_text(encoding="utf-8")
+    for pattern, label in (
+        (r"continue-on-error\s*:\s*true", "continue-on-error: true"),
+        (r"\|\|\s*true\b", "|| true"),
+        (r"\bif\s*:\s*false\b", "if: false"),
+    ):
+        if re.search(pattern, text):
+            fail(f"ci.yml: обход проверок ({label})")
+    for job in REQUIRED_JOBS + ["publish"]:
+        if not re.search(rf"^  {job}:\s*$", text, re.M):
+            fail(f"ci.yml: нет обязательного job '{job}'")
+    block = re.search(r"^  publish:\s*$(.*?)(?=^  \w[\w-]*:\s*$|\Z)", text, re.M | re.S)
+    if block:
+        needs = re.search(r"needs:\s*\[(.*?)\]", block.group(1))
+        listed = {n.strip() for n in needs.group(1).split(",")} if needs else set()
+        missing = [job for job in REQUIRED_JOBS + [] if job not in listed]
+        if missing:
+            fail(f"ci.yml: публикация не зависит от обязательных проверок: {', '.join(missing)}")
+        if "refs/heads/main" not in block.group(1):
+            fail("ci.yml: публикация должна выполняться только из ветки main")
+    owners = ROOT / ".github" / "CODEOWNERS"
+    if not owners.exists():
+        fail(".github/CODEOWNERS отсутствует")
+    else:
+        content = owners.read_text(encoding="utf-8")
+        for path in ("/.github/", "/Makefile", "/quality-baseline.txt", "/backend/pyproject.toml", "/backend/tests/"):
+            if path not in content:
+                fail(f"CODEOWNERS: не защищён критический путь {path}")
+
+
 def main() -> int:
     global checks
     baseline = read_baseline()
@@ -149,6 +187,7 @@ def main() -> int:
         check_pinned_requirements,
         check_no_secrets_in_repo,
         lambda: check_traceability(baseline),
+        check_ci_pipeline,
     ):
         check()
         checks += 1

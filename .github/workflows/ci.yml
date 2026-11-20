@@ -1,0 +1,200 @@
+# Pipeline CI. Критический файл приёмки: изменения проверяет владелец (.github/CODEOWNERS).
+# Все проверки выполняются в контейнере среды CI внутри Docker-in-Docker (ci/run.sh),
+# а команды те же, что и локально: make quality, make test, make container-check и т. д.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  APP_VERSION: sha-${{ github.sha }}
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/ci-env
+      - name: Подготовка данных события
+        run: |
+          mkdir -p .ci-cache
+          cp "$GITHUB_EVENT_PATH" .ci-cache/event.json
+          echo "CI_EVENT_FILE=$GITHUB_WORKSPACE/.ci-cache/event.json" >> "$GITHUB_ENV"
+          echo "CI_EVENT_NAME=$GITHUB_EVENT_NAME" >> "$GITHUB_ENV"
+          echo "CI_BASE_SHA=${{ github.event.pull_request.base.sha || github.event.before }}" >> "$GITHUB_ENV"
+      - name: Защита критических файлов и сравнение с базовой веткой
+        run: bash ci/run.sh python3 scripts/ci_guard.py
+      - name: Сводка
+        if: always()
+        run: '[ ! -f ci-summary.md ] || cat ci-summary.md >> "$GITHUB_STEP_SUMMARY"'
+
+  style:
+    name: style
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+      - run: bash ci/run.sh make deps
+      - name: Линтер и форматирование (ruff)
+        run: bash ci/run.sh make quality
+
+  policy:
+    name: policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+      - run: bash ci/run.sh make deps
+      - name: Запреты проекта (тесты, пороги, исключения, секреты, версии, CI)
+        run: bash ci/run.sh make policy
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+        with:
+          test-db: "true"
+          db-password: ${{ secrets.CI_TEST_DB_PASSWORD }}
+      - run: bash ci/run.sh make deps
+      - name: Тесты, покрытие, отчёты
+        run: bash ci/run.sh make test
+      - name: Сохранить отчёты тестов и покрытия
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: backend/reports/
+          if-no-files-found: warn
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+        with:
+          test-db: "true"
+          db-password: ${{ secrets.CI_TEST_DB_PASSWORD }}
+      - run: bash ci/run.sh make deps
+      - name: Миграции на чистой и заполненной БД
+        run: bash ci/run.sh make migrate-check
+
+  backup:
+    name: backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+        with:
+          test-db: "true"
+          db-password: ${{ secrets.CI_TEST_DB_PASSWORD }}
+      - run: bash ci/run.sh make deps
+      - name: Резервная копия, повреждение данных и восстановление
+        run: bash ci/run.sh make backup-check
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+      - run: bash ci/run.sh make deps
+      - name: SAST (bandit)
+        run: bash ci/run.sh make sast
+      - name: Проверка зависимостей (pip-audit)
+        run: bash ci/run.sh make audit
+      - name: Поиск секретов (gitleaks)
+        run: bash ci/run.sh make secrets
+      - name: Сохранить отчёты анализаторов
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: backend/reports/
+          if-no-files-found: warn
+
+  container:
+    name: container
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+      - name: Контейнерная проверка окружения (compose, nginx, БД)
+        run: bash ci/run.sh make container-check
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [guard, style, policy, test, migrations, backup, security, container]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-env
+      - name: Сборка образа с тегом, привязанным к SHA коммита
+        run: bash ci/run.sh make image
+      - name: Сохранить образ
+        run: docker save "music-store:${APP_VERSION}" -o image.tar
+      - name: Анализ образа на уязвимости (trivy)
+        run: bash ci/run.sh make image-scan
+      - name: Сохранить отчёт анализа образа
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-scan-report
+          path: backend/reports/
+          if-no-files-found: warn
+      - name: Передать образ следующему этапу
+        uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Публикация только после успешного прохождения ВСЕХ обязательных проверок и только из main.
+    # Если любой job из needs упал или пропущен, этот job не запускается.
+    needs: [guard, style, policy, test, migrations, backup, security, container, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+      - name: Запуск Docker-in-Docker
+        run: bash ci/start_dind.sh
+      - name: Публикация образа
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ci/publish.sh
+      - name: Сводка
+        run: cat ci-publish-summary.md >> "$GITHUB_STEP_SUMMARY"
