@@ -121,7 +121,7 @@ audit: ## Проверка зависимостей на известные уя
 
 secrets: ## Поиск секретов в файлах проекта (gitleaks в Docker)
 	mkdir -p $(BACKEND)/reports
-	docker run --rm -v "$(CURDIR):/repo" -w /repo $(GITLEAKS_IMAGE) detect --source /repo --no-git --redact --config /repo/.gitleaks.toml --report-format json --report-path /repo/backend/reports/gitleaks.json
+	docker run --rm -v "$(CURDIR):/repo" -w /repo $(GITLEAKS_IMAGE) detect --source /repo --no-git --redact -v --config /repo/.gitleaks.toml --report-format json --report-path /repo/backend/reports/gitleaks.json
 
 image: ## Собрать образ приложения с тегом APP_VERSION (в CI: sha-<commit>)
 	docker build -t music-store:$(APP_VERSION) --label org.opencontainers.image.revision=$(GIT_SHA) --label org.opencontainers.image.source=$(REPO_URL) .

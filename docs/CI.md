@@ -83,7 +83,7 @@
 
 1. **Сломанный тест.** В `backend/app/routes/sales.py` замените `<` на `<=` в проверке остатка. Job `test` красный, `build` и `publish` пропущены.
 2. **Сломанная миграция.** В `backend/ale/versions/9e8f7a6b5c4d_restrict_user_roles.py` измените имя таблицы `users` на `user`. Красные `migrations` и `test`.
-3. **Секрет.** Добавьте файл `backend/demo.txt` со строкой `AWS_ACCESS_KEY_ID=AKIAQ3EGRJ4ZT7WNB2XD`. Красный `security`, отчёт `gitleaks.json` в артефактах.
+3. **Секрет.** Создайте файл со случайным тестовым ключом (он генерируется в момент демонстрации, в репозитории его нет): `echo "AWS_ACCESS_KEY_ID=AKIA$(tr -dc 'A-Z2-7' </dev/urandom | head -c16)" > backend/demo.txt`, закоммитьте и отправьте ветку. Красный `security`, отчёт `gitleaks.json` в артефактах. Ветку с ключом не сливайте.
 4. **Образ не публикуется после ошибки.** При любой из ошибок выше `publish` не запускается. После слияния корректного изменения в `main` в разделе Packages появляется образ `sha-<коммит>`.
 5. **Защита файлов.** Удалите тест или снизьте `fail_under` в `backend/pyproject.toml`: красные `guard` и `policy`, а в Pull Request запрошен отзыв владельца.
 
