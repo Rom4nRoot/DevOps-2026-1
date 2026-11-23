@@ -54,7 +54,7 @@ fi
 check "в образе нет файлов .env" docker run --rm --entrypoint sh "$IMAGE" -c 'test ! -e /app/.env && test ! -e /app/backend/.env'
 check "в образе задан HEALTHCHECK" sh -c "docker image inspect -f '{{json .Config.Healthcheck}}' '$IMAGE' | grep -q Test"
 norm() { grep -v '^#' | grep -v '^$' | tr 'A-Z_' 'a-z-' | sort; }
-docker run --rm --entrypoint python "$IMAGE" -m pip freeze 2>/dev/null | norm > "$TMP/image.txt"
+docker run --rm --entrypoint python "$IMAGE" -c "import importlib.metadata as m; print('\n'.join(d.metadata['Name'] + '==' + d.version for d in m.distributions()))" 2>/dev/null | norm > "$TMP/image.txt"
 norm < backend/requirements.txt > "$TMP/lock.txt"
 if diff -q "$TMP/lock.txt" "$TMP/image.txt" >/dev/null; then
   ok "версии зависимостей в образе совпадают с backend/requirements.txt (сборка воспроизводима)"

@@ -26,6 +26,12 @@ RUN groupadd --system --gid 10001 app \
 
 COPY --from=builder /opt/venv /opt/venv
 
+# Установщик пакетов в рабочем образе не нужен: убираем pip вместе с вендорными библиотеками
+# (msgpack, urllib3, setuptools), в которых сканер образа находит уязвимости. Приложение pip не использует.
+RUN python -m pip uninstall -y pip \
+ && /usr/local/bin/python -m pip uninstall -y pip setuptools wheel \
+ && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
+
 # Приложение раздаёт интерфейс из ../frontend относительно рабочего каталога
 WORKDIR /app/backend
 COPY backend/app ./app
