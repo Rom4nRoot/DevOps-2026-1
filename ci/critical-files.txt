@@ -1,0 +1,21 @@
+# Критические файлы приёмки (маски fnmatch). Их изменения выделяются в CI и требуют отзыва владельца.
+.github/*
+ci/*
+Makefile
+quality-baseline.txt
+backend/pyproject.toml
+backend/tests/*
+backend/ale/versions/*
+backend/requirements*.txt
+docs/TRACEABILITY.md
+scripts/check_policy.py
+scripts/check_container_policy.py
+scripts/ci_guard.py
+scripts/container_check.sh
+Dockerfile
+compose.yaml
+docker/*
+.dockerignore
+.gitleaks.toml
+.trivyignore
+CONTRIBUTING.md

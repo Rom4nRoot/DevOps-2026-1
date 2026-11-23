@@ -100,3 +100,37 @@ container-restore: ## Восстановить БД в текущем окруж
 container-restore-new: ## Восстановить БД в НОВЫЙ volume: make container-restore-new FILE=backups/x.dump
 	@test -n "$(FILE)" || { echo "Укажите файл: make container-restore-new FILE=backups/<файл>.dump"; exit 2; }
 	bash scripts/container_restore.sh --new-volume "$(FILE)"
+
+# ---------- Лаб. 5: команды, которые выполняет CI (те же, что и локально) ----------
+GIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
+REPO_URL ?= https://github.com/Skilzarik/DevOps-2026-1
+APP_VERSION ?= dev
+GITLEAKS_IMAGE ?= zricethezav/gitleaks:v8.21.2
+TRIVY_IMAGE ?= aquasec/trivy:0.58.1
+
+deps: ## Создать backend/venv и поставить зависимости (без настройки БД)
+	[ -x $(VBIN)/python ] || $(PYTHON) -m venv $(BACKEND)/venv
+	$(VBIN)/pip install -q -r $(BACKEND)/requirements-dev.txt
+
+backup-check: ## Резервная копия, повреждение данных и восстановление (на тестовой БД)
+	$(WITH_TEST_ENV) cd $(BACKEND) && venv/bin/pytest tests/test_backup_restore.py --no-cov
+
+audit: ## Проверка зависимостей на известные уязвимости (pip-audit)
+	mkdir -p $(BACKEND)/reports
+	set -o pipefail; cd $(BACKEND) && venv/bin/pip-audit -r requirements.txt --no-deps --disable-pip --progress-spinner off 2>&1 | tee reports/pip-audit.txt
+
+secrets: ## Поиск секретов в файлах проекта (gitleaks в Docker)
+	mkdir -p $(BACKEND)/reports
+	docker run --rm -v "$(CURDIR):/repo" -w /repo $(GITLEAKS_IMAGE) detect --source /repo --no-git --redact -v --config /repo/.gitleaks.toml --report-format json --report-path /repo/backend/reports/gitleaks.json
+
+image: ## Собрать образ приложения с тегом APP_VERSION (в CI: sha-<commit>)
+	docker build -t music-store:$(APP_VERSION) --label org.opencontainers.image.revision=$(GIT_SHA) --label org.opencontainers.image.source=$(REPO_URL) .
+
+image-scan: ## Анализ образа на уязвимости HIGH/CRITICAL (trivy)
+	mkdir -p $(BACKEND)/reports
+	test -f image.tar || docker save music-store:$(APP_VERSION) -o image.tar
+	docker run --rm -v "$(CURDIR):/work" -w /work $(TRIVY_IMAGE) image --input /work/image.tar --cache-dir /work/.trivycache --severity HIGH,CRITICAL --ignore-unfixed --format json --output /work/backend/reports/trivy.json
+	docker run --rm -v "$(CURDIR):/work" -w /work $(TRIVY_IMAGE) image --input /work/image.tar --cache-dir /work/.trivycache --skip-db-update --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
+
+ci-guard: ## Защита критических файлов: сравнение с origin/main (как в CI)
+	python3 scripts/ci_guard.py

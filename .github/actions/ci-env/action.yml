@@ -1,0 +1,36 @@
+name: Среда CI (Docker-in-Docker)
+description: Запускает DinD, готовит образ среды CI, кэши зависимостей и при необходимости тестовую БД
+inputs:
+  test-db:
+    description: Поднять отдельную тестовую БД в DinD
+    default: "false"
+  db-password:
+    description: Пароль тестовой БД (защищённый секрет)
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Кэш зависимостей Python (pip)
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ hashFiles('backend/requirements-dev.txt') }}
+        restore-keys: |
+          pip-${{ runner.os }}-
+    - name: Кэш образа среды CI
+      uses: actions/cache@v4
+      with:
+        path: .ci-cache
+        key: ci-image-${{ hashFiles('ci/Dockerfile') }}
+    - name: Запуск Docker-in-Docker
+      shell: bash
+      run: bash ci/start_dind.sh
+    - name: Образ среды CI
+      shell: bash
+      run: bash ci/load_ci_image.sh
+    - name: Тестовая БД
+      if: inputs.test-db == 'true'
+      shell: bash
+      env:
+        CI_TEST_DB_PASSWORD: ${{ inputs.db-password }}
+      run: bash ci/prepare_test_db.sh

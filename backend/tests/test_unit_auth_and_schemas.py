@@ -3,10 +3,10 @@
 import time
 from datetime import timedelta
 
+import jwt
 import pytest
 from fastapi import HTTPException
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError
+from jwt import ExpiredSignatureError, PyJWTError
 from pydantic import ValidationError
 
 from app import auth, models, schemas
@@ -61,7 +61,7 @@ def test_expired_token_is_rejected():
 
 def test_token_signed_with_other_key_is_rejected():
     token = auth.create_access_token({"sub": "alice"})
-    with pytest.raises(JWTError):
+    with pytest.raises(PyJWTError):
         jwt.decode(token, "another-key", algorithms=[settings.ALGORITHM])
 
 

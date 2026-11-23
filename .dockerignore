@@ -33,3 +33,11 @@ compose.yaml
 Dockerfile
 Makefile
 *.md
+
+# Лаб. 5: файлы CI не попадают в образ
+ci
+.ci-cache
+.trivycache
+image.tar
+ci-summary.md
+ci-publish-summary.md
